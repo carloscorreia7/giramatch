@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Matches — GiraMatch</title>
+  <link rel="icon" type="image/png" href="logo-giramatch.png">
+  <link rel="stylesheet" href="stylo.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="app.js"></script>
+<script>
+GM.pagina('matches', 'Matches', async (main) => {
+  let todos = [], aviso = '';
+  const f = { aba: GM.param('aba') || 'todos', natureza: '', min: 60, ordem: 'score' };
+
+  const carregar = async () => { const r = await GM.api('GET', '/api/matches'); todos = r.matches; aviso = r.aviso; };
+  const ABAS = [['todos', 'Todos'], ['novo', 'Para responder'], ['aguardando', 'Aguardando'], ['conectado', 'Conectados'], ['recusado', 'Dispensados']];
+
+  const pintar = () => {
+    const cont = (k) => (k === 'todos' ? todos.length : todos.filter((m) => GM.estadoMatch(m).chave === k).length);
+    document.getElementById('abas').innerHTML = ABAS.map(([k, r]) => `<button type="button" data-aba="${k}" class="${f.aba === k ? 'ativo' : ''}" role="tab" aria-selected="${f.aba === k}">${r}<span class="cnt">${cont(k)}</span></button>`).join('');
+    let l = todos.filter((m) => (f.aba === 'todos' || GM.estadoMatch(m).chave === f.aba) && m.score >= f.min && (!f.natureza || m.minha_demanda.natureza === f.natureza));
+    l.sort((a, b) => (f.ordem === 'economia' ? (b.economia_valor || 0) - (a.economia_valor || 0) : f.ordem === 'prazo' ? a.minha_demanda.mes_previsto - b.minha_demanda.mes_previsto : b.score - a.score));
+    document.getElementById('min-v').textContent = f.min + '%';
+    document.getElementById('lista').innerHTML = l.length ? l.map((m) => GM.cardMatch(m)).join('')
+      : GM.vazio('Nenhum match nesta visão', 'Altere os filtros ou cadastre mais demandas para ampliar as oportunidades.', '<a class="btn btn-primary" href="nova-demanda.html">+ Nova demanda</a>');
+  };
+
+  main.innerHTML = `
+    <div class="page-head"><div><h1>Oportunidades de cooperação</h1><p>Demandas de outros órgãos compatíveis com as suas, ordenadas pelo percentual de compatibilidade.</p></div></div>
+    <div class="tabs" id="abas" role="tablist"></div>
+    <div class="row" style="margin-bottom:16px">
+      <select id="f-nat" style="max-width:210px" aria-label="Natureza"><option value="">Todas as naturezas</option>${Object.entries(NAT).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+      <label class="row small" style="gap:8px">Compatibilidade mínima <input id="f-min" type="range" min="60" max="100" step="5" value="${f.min}" style="width:140px"><strong id="min-v"></strong></label>
+      <label class="row small" style="gap:8px">Ordenar por <select id="f-ord" style="width:auto"><option value="score">Compatibilidade</option><option value="economia">Economia estimada</option><option value="prazo">Prazo no PCA</option></select></label>
+    </div>
+    <div id="lista"></div>
+    <div class="alert a-info" style="margin-top:16px"><div>${'Carregando…'}</div></div>`;
+  await carregar();
+  main.querySelector('.alert').firstElementChild.textContent = aviso;
+  pintar();
+
+  document.getElementById('abas').onclick = (e) => { const b = e.target.closest('[data-aba]'); if (b) { f.aba = b.dataset.aba; pintar(); } };
+  document.getElementById('f-nat').onchange = (e) => { f.natureza = e.target.value; pintar(); };
+  document.getElementById('f-min').oninput = (e) => { f.min = +e.target.value; pintar(); };
+  document.getElementById('f-ord').onchange = (e) => { f.ordem = e.target.value; pintar(); };
+  GM.ligarDecisoes(main, async () => { await carregar(); pintar(); });
+});
+</script>
+</body>
+</html>

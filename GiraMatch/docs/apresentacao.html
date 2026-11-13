@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GiraMatch — Apresentação</title>
+<style>
+  :root { --bg:#0f2a43; --card:#ffffff; --ink:#14212e; --muted:#5b6b7a; --teal:#0b8f89; --amber:#d9822b; --line:#d7e0e8; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); font-family: system-ui, "Segoe UI", Roboto, sans-serif; color: var(--ink); }
+  body { display: flex; flex-direction: column; }
+  .palco { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .slide { display: none; width: 100%; max-width: 1180px; max-height: 100%; overflow: auto; background: var(--card); border-radius: 18px; padding: clamp(18px, 3.2vw, 44px); }
+  .slide.ativo { display: block; }
+  h1 { font-size: clamp(1.6rem, 3.4vw, 2.6rem); margin: 0 0 6px; }
+  h2 { font-size: clamp(1.15rem, 2vw, 1.5rem); margin: 18px 0 6px; color: var(--teal); }
+  p, li { font-size: clamp(1rem, 1.7vw, 1.3rem); line-height: 1.45; }
+  ul, ol { margin: 6px 0; padding-left: 1.3em; }
+  .sub { color: var(--muted); margin: 0 0 12px; }
+  .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .caixa { border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
+  .selo { display: inline-block; font-size: .8rem; font-weight: 700; padding: 2px 10px; border-radius: 99px; background: #fff3e0; color: #9a5a10; border: 1px solid #f0c98f; }
+  .real { background: #e0f4f2; color: #07625e; border-color: #a6dcd7; }
+  .aviso { background: #fff3e0; border: 1px solid #f0c98f; border-radius: 10px; padding: 10px 14px; font-size: 1rem; }
+  svg { width: 100%; height: auto; }
+  code { background: #eef3f7; padding: 1px 6px; border-radius: 6px; font-size: .95em; }
+  a { color: #0a6f6a; }
+  .barra { display: flex; gap: 10px; align-items: center; padding: 10px 16px; background: #0a1f33; flex-wrap: wrap; }
+  .barra button { background: var(--teal); color: #fff; border: 0; border-radius: 10px; padding: 8px 16px; font: inherit; font-weight: 700; cursor: pointer; }
+  .barra button:focus-visible, .mini:focus-visible { outline: 3px solid #ffd27a; outline-offset: 2px; }
+  .barra .cont { color: #cfe0ee; margin-right: auto; }
+  .minis { display: flex; gap: 8px; }
+  .mini { width: 120px; height: 56px; border-radius: 8px; border: 2px solid transparent; background: #1c4468; color: #fff; font-size: .78rem; padding: 6px; text-align: left; cursor: pointer; }
+  .mini.ativo { border-color: #ffd27a; }
+  @media print { .barra { display: none; } .slide { display: block !important; page-break-after: always; } }
+</style>
+</head>
+<body>
+<div class="palco">
+
+<!-- SLIDE 1 -->
+<section class="slide ativo" aria-label="Slide 1: problema e solução">
+  <h1>GiraMatch</h1>
+  <p class="sub">Cooperação entre órgãos públicos por <strong>match</strong> de demandas.</p>
+  <p><span class="selo">Protótipo — dados fictícios</span> &nbsp; Equipe: <em>[preencher nome da equipe]</em></p>
+  <div class="grade">
+    <div class="caixa"><h2>Problema</h2><p>Cada órgão planeja suas compras (PCA) e capacitações isoladamente e perde escala, tempo e economia.</p></div>
+    <div class="caixa"><h2>Público-alvo</h2><p>Gestores de contratações e planejamento de tribunais e órgãos do sistema de Justiça.</p></div>
+    <div class="caixa"><h2>Proposta de valor</h2><p>O sistema encontra demandas semelhantes entre órgãos, explica o porquê e organiza a cooperação. <strong>A decisão é sempre humana.</strong></p></div>
+  </div>
+  <h2>A solução em 3 passos</h2>
+  <ol>
+    <li><strong>Cadastrar</strong> demandas (itens do PCA, serviços, capacitações).</li>
+    <li><strong>Receber matches</strong> com score, motivos, caminho jurídico sugerido (IRP) e alertas.</li>
+    <li><strong>Conectar</strong>: quando os dois lados aceitam, nasce o comitê com cronograma e conversa.</li>
+  </ol>
+</section>
+
+<!-- SLIDE 2 -->
+<section class="slide" aria-label="Slide 2: arquitetura">
+  <h1>Arquitetura e fluxo</h1>
+  <p class="sub">Diagrama da arquitetura implementada (fonte editável: <code>docs/especificacao/ARQUITETURA.mmd</code>).</p>
+  <svg viewBox="0 0 900 300" role="img" aria-label="Navegador chama a API Python, que usa o banco de dados; modo demonstração simulado no navegador; PNCP e SSO apenas planejados">
+    <defs><marker id="s" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#33516b"/></marker></defs>
+    <rect x="10" y="30" width="250" height="170" rx="14" fill="#e8f3f2" stroke="#0b8f89" stroke-width="2"/>
+    <text x="30" y="58" font-size="18" font-weight="700">Navegador</text>
+    <text x="30" y="84" font-size="14">HTML/CSS/JS puro</text>
+    <text x="30" y="104" font-size="14">login · demandas · matches</text>
+    <text x="30" y="124" font-size="14">convites · comitê · chat</text>
+    <rect x="28" y="144" width="214" height="40" rx="8" fill="#fff3e0" stroke="#d9822b" stroke-dasharray="5 4"/>
+    <text x="38" y="169" font-size="13">Modo demonstração (SIMULADO)</text>
+    <rect x="340" y="30" width="270" height="170" rx="14" fill="#eef1fb" stroke="#4a5fc1" stroke-width="2"/>
+    <text x="360" y="58" font-size="18" font-weight="700">API Python (REAL)</text>
+    <text x="360" y="84" font-size="14">Rotas REST /api/*</text>
+    <text x="360" y="104" font-size="14">Login por token (PBKDF2)</text>
+    <text x="360" y="124" font-size="14">Motor de match explicável</text>
+    <text x="360" y="144" font-size="14">score ≥ 60 · sigilo de valores</text>
+    <ellipse cx="780" cy="115" rx="100" ry="62" fill="#f4efe6" stroke="#8a6d3b" stroke-width="2"/>
+    <text x="780" y="104" font-size="16" font-weight="700" text-anchor="middle">Banco</text>
+    <text x="780" y="124" font-size="13" text-anchor="middle">PostgreSQL (produção)</text>
+    <text x="780" y="142" font-size="13" text-anchor="middle">SQLite (dev/testes)</text>
+    <line x1="260" y1="100" x2="338" y2="100" stroke="#33516b" stroke-width="2.5" marker-end="url(#s)"/>
+    <line x1="610" y1="115" x2="676" y2="115" stroke="#33516b" stroke-width="2.5" marker-end="url(#s)"/>
+    <text x="299" y="90" font-size="12" text-anchor="middle">JSON</text>
+    <rect x="340" y="235" width="270" height="48" rx="10" fill="none" stroke="#999" stroke-dasharray="5 4"/>
+    <text x="475" y="264" font-size="13" text-anchor="middle" fill="#666">PNCP · SSO · IA semântica (APENAS PLANEJADO)</text>
+  </svg>
+  <div class="grade">
+    <div class="caixa"><h2>Componentes</h2><ul><li><span class="selo real">REAL</span> API + banco</li><li><span class="selo">SIMULADO</span> modo demonstração (navegador)</li><li><span class="selo">PLANEJADO</span> PNCP, SSO, IA</li></ul></div>
+    <div class="caixa"><h2>Fluxo principal</h2><ol><li>Órgão A cadastra demanda</li><li>Motor sugere match ao A e ao B</li><li>Os dois clicam em Conectar</li><li>Comitê: cronograma + conversa</li></ol></div>
+  </div>
+</section>
+
+<!-- SLIDE 3 -->
+<section class="slide" aria-label="Slide 3: demonstração">
+  <h1>Demonstração (≈ 5 min)</h1>
+  <div class="aviso"><strong>Elementos simulados:</strong> todos os dados são fictícios e a economia é ilustrativa. O <em>modo demonstração</em> é simulado no navegador. Sem a API publicada não há conversa entre órgãos.</div>
+  <div class="grade">
+    <div class="caixa"><h2>Roteiro</h2><ol>
+      <li>Entrar como TRE-PB (navegador A) e como TJPB (navegador B).</li>
+      <li>TRE-PB abre o feed e vê um match com score e motivos.</li>
+      <li>TRE-PB conecta; TJPB aceita; o comitê abre.</li>
+      <li>Trocar uma mensagem entre os dois (aparece em até 5 s).</li>
+      <li>Fechar: decisão sempre humana.</li></ol></div>
+    <div class="caixa"><h2>Como executar</h2>
+      <p>Contas de teste: <code>gestor@trepb.giramatch.demo</code>, <code>gestor@tjpb.giramatch.demo</code> (senha <code>demo123</code>).</p>
+      <p>Local: <code>python -m giramatch demo</code> e <code>python -m giramatch servir</code> (pasta <code>giramatch-backend/giramatch-backend</code>), depois abrir <a href="../index.html">index.html</a>.</p>
+      <p>Publicado: <em>[colar a URL do site]</em></p></div>
+    <div class="caixa"><h2>Capturas das telas</h2><p>Nenhuma captura real foi feita nesta sessão. Inclua as capturas do dashboard, do match e do comitê antes de apresentar.</p></div>
+  </div>
+  <p class="sub">Testes: 28 passed (SQLite). Login com limite de tentativas e erro 503 se o banco cair. PostgreSQL e deploy: <strong>não verificados</strong>.</p>
+</section>
+
+</div>
+
+<nav class="barra" aria-label="Navegação da apresentação">
+  <button id="ant" type="button">◀ Anterior</button>
+  <button id="prox" type="button">Próximo ▶</button>
+  <button id="tela" type="button">Tela cheia</button>
+  <span class="cont" id="cont" aria-live="polite">1 / 3</span>
+  <div class="minis" id="minis"></div>
+</nav>
+
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const titulos = ['1 · Problema e solução', '2 · Arquitetura', '3 · Demonstração'];
+  let i = 0;
+  const minis = document.getElementById('minis');
+  slides.forEach((_, n) => {
+    const b = document.createElement('button');
+    b.className = 'mini'; b.type = 'button'; b.textContent = titulos[n];
+    b.setAttribute('aria-label', 'Ir para o slide ' + (n + 1));
+    b.onclick = () => ir(n);
+    minis.appendChild(b);
+  });
+  function ir(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, k) => s.classList.toggle('ativo', k === i));
+    [...minis.children].forEach((m, k) => m.classList.toggle('ativo', k === i));
+    document.getElementById('cont').textContent = (i + 1) + ' / ' + slides.length;
+  }
+  document.getElementById('ant').onclick = () => ir(i - 1);
+  document.getElementById('prox').onclick = () => ir(i + 1);
+  document.getElementById('tela').onclick = () => {
+    try { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); } catch (e) { /* sem suporte */ }
+  };
+  document.addEventListener('keydown', (e) => {
+    if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); ir(i + 1); }
+    else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); ir(i - 1); }
+    else if (e.key === 'Home') ir(0);
+    else if (e.key === 'End') ir(slides.length - 1);
+    else if (e.key === 'f' || e.key === 'F') document.getElementById('tela').click();
+  });
+  ir(0);
+})();
+</script>
+</body>
+</html>

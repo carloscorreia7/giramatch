@@ -1,0 +1,2 @@
+c24eb1439a27fb24457a4cff2e386d58bde21308fc226c9c301bbafff9a7b113  GiraMatch_v1_corrigida.zip  (git tag v1-corrigida)
+541267f86678ad00ffea6dc5c86fa474fcff1acae4b9e039e8279e1dc42fbfd1  GiraMatch_ORIGINAL_55b52a6.zip  (git tag v0-original)

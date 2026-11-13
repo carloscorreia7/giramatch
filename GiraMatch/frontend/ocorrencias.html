@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ocorrências — GiraMatch</title>
+  <link rel="icon" type="image/png" href="logo-giramatch.png">
+  <link rel="stylesheet" href="stylo.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="app.js"></script>
+<script>
+GM.pagina('ocorr', 'Ocorrências', async (main, sessao) => {
+  const fiscal = sessao.usuario.perfil === 'fiscal';
+  let filtro = 'abertas';
+  const desenhar = async () => {
+    const { ocorrencias } = await GM.api('GET', '/api/ocorrencias');
+    const abertas = ocorrencias.filter((o) => o.status !== 'resolvida');
+    const lista = filtro === 'todas' ? ocorrencias : filtro === 'resolvidas' ? ocorrencias.filter((o) => o.status === 'resolvida') : abertas;
+    main.innerHTML = `
+      <div class="page-head"><div><h1>Ocorrências da fiscalização</h1>
+        <p>${fiscal ? 'Inconsistências, falhas, falta de informação e intercorrências apontadas aos tribunais. Para registrar uma nova, abra a iniciativa em Acompanhamento.'
+          : 'Apontamentos da fiscalização sobre as iniciativas do seu órgão. Responda para que a fiscalização possa conferir e encerrar.'}</p></div>
+        <select id="f-status" class="right" style="max-width:240px" aria-label="Filtrar ocorrências">
+          <option value="abertas" ${filtro === 'abertas' ? 'selected' : ''}>Em aberto (${abertas.length})</option>
+          <option value="resolvidas" ${filtro === 'resolvidas' ? 'selected' : ''}>Resolvidas (${ocorrencias.length - abertas.length})</option>
+          <option value="todas" ${filtro === 'todas' ? 'selected' : ''}>Todas (${ocorrencias.length})</option></select></div>
+      ${lista.length ? lista.map((o) => GM.cartaoOcorrencia(o, fiscal, true)).join('')
+        : GM.vazio('Nenhuma ocorrência aqui', filtro === 'abertas' ? 'Não há ocorrências em aberto.' : 'Nada a mostrar neste filtro.', '<a class="btn btn-primary" href="acompanhamento.html">Ir para o Acompanhamento</a>')}`;
+    document.getElementById('f-status').onchange = (e) => { filtro = e.target.value; desenhar(); };
+  };
+  GM.ligarOcorrencias(main, async () => { await desenhar(); GM.atualizarSino(); });
+  await desenhar();
+});
+</script>
+</body>
+</html>

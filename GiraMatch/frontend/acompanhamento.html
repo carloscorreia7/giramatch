@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acompanhamento — GiraMatch</title>
+  <link rel="icon" type="image/png" href="logo-giramatch.png">
+  <link rel="stylesheet" href="stylo.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="app.js"></script>
+<script>
+GM.pagina('acomp', 'Acompanhamento da iniciativa', async (main, sessao) => {
+  const esc = GM.esc;
+  const { comites } = await GM.api('GET', '/api/comites');
+  if (!comites.length) {
+    main.innerHTML = sessao.usuario.perfil === 'fiscal'
+      ? GM.vazio('Nenhuma iniciativa para fiscalizar', 'Quando dois órgãos conectarem um match, a iniciativa aparece aqui.', '')
+      : GM.vazio('Nenhuma iniciativa em andamento', 'Quando um match for conectado, o acompanhamento aparece aqui.', '<a class="btn btn-primary" href="convites.html">Ver convites</a>');
+    return;
+  }
+  const id = +(GM.param('id') || comites[0].id);
+  const TIPOS_DOC = ['ETP', 'Termo de referência', 'IRP', 'Edital', 'Ata de registro de preços', 'Acordo de cooperação', 'Parecer jurídico', 'Outro'];
+
+  const desenhar = async () => {
+    const c = (await GM.api('GET', `/api/comites/${id}`)).comite;
+    const decs = GM.local.ler('dec', id), docs = GM.local.ler('doc', id);
+    const feitas = c.tarefas.filter((t) => t.concluida).length;
+    const pct = Math.round(feitas / c.tarefas.length * 100);
+    const hoje = GM.hoje();
+    const contrato = GM.contrato(c.data_fim_contrato);
+    const fiscal = sessao.usuario.perfil === 'fiscal', dis = fiscal ? 'disabled' : '';
+    const ocs = (await GM.api('GET', `/api/ocorrencias?comite_id=${id}`)).ocorrencias;
+    const ocPorTarefa = {};
+    ocs.filter((o) => o.status !== 'resolvida' && o.tarefa_id).forEach((o) => { ocPorTarefa[o.tarefa_id] = (ocPorTarefa[o.tarefa_id] || 0) + 1; });
+    const nomeOrg = (oid) => { const o = c.membros.find((x) => x.id === oid); return o ? o.sigla : 'Todos'; };
+
+    const evolucao = [
+      { em: c.criado_em, tipo: '', rot: `Comitê criado entre ${c.membros.map((o) => esc(o.sigla)).join(' e ')}` },
+      ...decs.map((d) => ({ em: d.em, tipo: 'tipo-dec', rot: `<strong>Decisão:</strong> ${esc(d.texto)} <span class="muted">(${esc(d.autor)})</span>` })),
+      ...docs.map((d) => ({ em: d.em, tipo: 'tipo-doc', rot: `<strong>Documento:</strong> ${esc(d.tipo)} — ${d.link ? `<a href="${esc(d.link)}" target="_blank" rel="noopener noreferrer">${esc(d.nome)}</a>` : esc(d.nome)}` })),
+      ...c.mensagens.map((m) => ({ em: m.enviada_em, tipo: '', rot: `<span class="muted">Mensagem de ${esc(m.orgao)}:</span> ${esc(m.texto.length > 90 ? m.texto.slice(0, 90) + '…' : m.texto)}` })),
+    ].sort((a, b) => String(b.em).localeCompare(String(a.em)));
+
+    const outro = c.membros.find((o) => o.sigla !== sessao.orgao.sigla) || c.membros[0];
+    const exemplo = [
+      { autor: 'Equipe técnica', orgao: outro.sigla, quando: 'exemplo', texto: 'Bom dia! Vimos a compatibilidade entre as demandas. Podemos alinhar o escopo do ETP esta semana?' },
+      { autor: 'Equipe técnica', orgao: sessao.orgao.sigla, quando: 'exemplo', texto: 'Podemos sim. Sugerimos quinta-feira às 14h por videoconferência.' },
+      { autor: 'Equipe técnica', orgao: outro.sigla, quando: 'exemplo', texto: 'Combinado. Vou registrar o documento no SEI e compartilhar o link aqui.' },
+    ];
+    const msgs = c.mensagens.length ? c.mensagens.map((m) => ({ autor: m.autor, orgao: m.orgao, quando: GM.data(m.enviada_em), texto: m.texto })) : exemplo;
+
+    main.innerHTML = `
+      <div class="page-head"><div><h1>${esc(c.nome.replace('Comitê de cooperação — ', ''))}</h1>
+        <p>${c.membros.map((o) => esc(o.sigla)).join(' × ')} · <a href="comite.html?id=${c.id}">Abrir comitê</a></p></div>
+        ${comites.length > 1 ? `<select id="troca" class="right" style="max-width:280px" aria-label="Trocar de iniciativa">${comites.map((x) => `<option value="${x.id}" ${x.id === id ? 'selected' : ''}>${esc(x.nome.replace('Comitê de cooperação — ', ''))}</option>`).join('')}</select>` : ''}</div>
+
+      <div class="card" style="margin-bottom:16px"><div class="progresso"><div class="bar ok"><i style="width:${pct}%"></i></div><strong>${pct}%</strong></div>
+        <p class="muted small" style="margin:6px 0 0">${feitas} de ${c.tarefas.length} etapas concluídas.</p></div>
+
+      <div class="grid g-main">
+        <div class="stack">
+          <section class="card" id="contrato" tabindex="-1"><h2>Data fim do contrato</h2>
+            <div class="row" style="align-items:flex-end">
+              <div class="field" style="margin:0"><label for="fim-contrato">Informe quando o contrato termina</label>
+                <input type="date" id="fim-contrato" value="${esc(c.data_fim_contrato || '')}" ${dis}></div>
+              ${c.data_fim_contrato && !fiscal ? '<button class="btn btn-sm btn-ghost" id="fim-limpar" type="button">Limpar data</button>' : ''}</div>
+            ${contrato ? `<div class="alert ${contrato.cls}" role="${contrato.nivel === 'critico' ? 'alert' : 'status'}" style="margin-top:12px"><div><strong>${contrato.rot}.</strong> ${esc(contrato.texto)}</div></div>`
+              : '<p class="muted small" style="margin-bottom:0">Sem data informada. Com ela, o GiraMatch avisa 60 dias antes (alerta) e 30 dias antes (alerta crítico), aqui e no sininho do topo.</p>'}
+          </section>
+
+          <section class="card"><h2>Cronograma</h2>
+            ${c.tarefas.map((t) => { const atraso = !t.concluida && t.prazo < hoje; return `
+              <div class="tarefa ${t.concluida ? 'feita' : ''}"><input type="checkbox" data-t="${t.id}" ${t.concluida ? 'checked' : ''} ${dis} aria-label="Concluir: ${esc(t.titulo)}">
+                <div style="flex:1"><div class="t">${t.ordem}. ${esc(t.titulo)}</div>
+                  <div class="row small muted">Responsável: ${esc(nomeOrg(t.responsavel_orgao_id))}
+                    <label class="row" style="gap:6px">· prazo <input type="date" data-p="${t.id}" value="${esc(t.prazo || '')}" ${dis}></label>
+                    ${atraso ? '<span class="badge b-bad">Atrasada</span>' : ''}
+                    ${ocPorTarefa[t.id] ? `<a class="badge b-bad" href="#ocorrencias" title="Ocorrências em aberto nesta etapa">⚑ ${ocPorTarefa[t.id]} ocorrência(s)</a>` : ''}
+                    ${fiscal ? `<button class="btn btn-sm btn-ghost" data-oc-nova="${t.id}" type="button">Registrar ocorrência</button>` : ''}</div></div></div>`; }).join('')}</section>
+
+          <section class="card" id="ocorrencias" tabindex="-1"><div class="row"><h2 style="margin:0">Ocorrências da fiscalização</h2>
+            ${fiscal ? '<button class="btn btn-sm btn-primary right" id="oc-nova" type="button">Registrar ocorrência</button>' : ''}</div>
+            <p class="muted small">${fiscal ? 'Registre inconsistências, falhas, falta de informação ou intercorrências. Os dois tribunais são avisados e respondem aqui.' : 'Apontamentos da fiscalização sobre esta iniciativa. Responda para que a fiscalização possa conferir e encerrar.'}</p>
+            ${ocs.length ? ocs.map((o) => GM.cartaoOcorrencia(o, fiscal)).join('') : '<p class="muted small">Nenhuma ocorrência registrada.</p>'}</section>
+
+          <section class="card" data-gestor><h2>Registro de decisões</h2>
+            <form id="f-dec" class="row" style="align-items:flex-start"><textarea id="d-texto" style="min-height:64px;flex:1;min-width:220px" placeholder="Ex.: Definido que o TRE-PB será o órgão gerenciador da IRP." aria-label="Decisão"></textarea>
+              <button class="btn btn-primary" type="submit">Registrar</button></form>
+            <ul class="ul-plain" style="margin-top:12px">${decs.length ? decs.map((d, i) => `<li>${esc(d.texto)}<br><span class="muted small">${GM.data(d.em)} · ${esc(d.autor)} <button class="btn btn-sm btn-ghost" data-rd="${i}" type="button">remover</button></span></li>`).join('') : '<li class="muted">Nenhuma decisão registrada.</li>'}</ul></section>
+
+          <section class="card" data-gestor><h2>Documentos</h2>
+            <form id="f-doc" class="form-grid">
+              <div class="field"><label class="req" for="doc-nome">Nome do documento</label><input id="doc-nome" required></div>
+              <div class="field"><label for="doc-tipo">Tipo</label><select id="doc-tipo">${TIPOS_DOC.map((t) => `<option>${t}</option>`).join('')}</select></div>
+              <div class="field full"><label for="doc-link">Link (SEI, PNCP, nuvem institucional)</label><input id="doc-link" type="url" placeholder="https://"></div>
+              <div class="full"><button class="btn btn-primary" type="submit">Registrar documento</button></div></form>
+            <ul class="ul-plain" style="margin-top:12px">${docs.length ? docs.map((d, i) => `<li><strong>${esc(d.tipo)}</strong> — ${d.link ? `<a href="${esc(d.link)}" target="_blank" rel="noopener noreferrer">${esc(d.nome)}</a>` : esc(d.nome)}<br><span class="muted small">${GM.data(d.em)} · ${esc(d.autor)} <button class="btn btn-sm btn-ghost" data-rdoc="${i}" type="button">remover</button></span></li>`).join('') : '<li class="muted">Nenhum documento registrado.</li>'}</ul>
+            <p class="small muted">ℹ️ Registro de decisões e documentos fica salvo só neste navegador por enquanto; o backend ainda não possui essas tabelas.</p></section>
+
+          <section class="card"><h2>Canal de conversa</h2>
+            <p class="muted small" style="margin-top:0">Conversa entre as equipes do comitê${c.mensagens.length ? '' : ' — exemplo de como ficará após a conexão'}.</p>
+            <div class="chat" id="chat">${msgs.map((m) => `<div class="msg ${m.orgao === sessao.orgao.sigla ? 'minha' : ''}"><div class="quem">${esc(m.autor)} · ${esc(m.orgao)} · ${esc(m.quando)}</div>${esc(m.texto)}</div>`).join('')}</div>
+            <form class="chat-form" id="f-msg" data-gestor><input id="msg" placeholder="Escreva uma mensagem…" maxlength="4000" aria-label="Mensagem"><button class="btn btn-primary" type="submit">Enviar</button></form></section>
+        </div>
+
+        <aside class="card"><h2>Evolução da iniciativa</h2><ul class="timeline">${evolucao.map((e) => `<li class="${e.tipo}"><div class="quando">${GM.data(e.em)}</div>${e.rot}</li>`).join('')}</ul></aside>
+      </div>`;
+
+    const salvarFim = async (valor) => {
+      try { await GM.api('PATCH', `/api/comites/${id}`, { data_fim_contrato: valor || null }); GM.toast(valor ? 'Data fim do contrato salva.' : 'Data removida.', 'ok'); await desenhar(); GM.atualizarSino(); }
+      catch (e) { GM.toast(e.message, 'erro'); }
+    };
+    document.getElementById('fim-contrato').onchange = (e) => salvarFim(e.target.value);
+    const lim = document.getElementById('fim-limpar'); if (lim) lim.onclick = () => salvarFim('');
+    const registrar = async (tarefaId) => { if (await GM.novaOcorrencia(id, c.tarefas, tarefaId)) { GM.toast('Ocorrência registrada. Os tribunais foram avisados.', 'ok'); await desenhar(); GM.atualizarSino(); } };
+    main.querySelectorAll('[data-oc-nova]').forEach((b) => b.onclick = () => registrar(+b.dataset.ocNova));
+    const ocNova = document.getElementById('oc-nova'); if (ocNova) ocNova.onclick = () => registrar(null);
+    const t = document.getElementById('troca'); if (t) t.onchange = () => { location.href = `acompanhamento.html?id=${t.value}`; };
+    main.querySelectorAll('[data-t]').forEach((cb) => cb.onchange = async () => {
+      const tr = c.tarefas.find((x) => x.id === +cb.dataset.t);
+      try { await GM.api('PATCH', `/api/comites/${id}/tarefas/${tr.id}`, { concluida: cb.checked, prazo: tr.prazo }); await desenhar(); } catch (e) { GM.toast(e.message, 'erro'); cb.checked = !cb.checked; }
+    });
+    main.querySelectorAll('[data-p]').forEach((inp) => inp.onchange = async () => {
+      const tr = c.tarefas.find((x) => x.id === +inp.dataset.p);
+      try { await GM.api('PATCH', `/api/comites/${id}/tarefas/${tr.id}`, { concluida: tr.concluida, prazo: inp.value }); GM.toast('Prazo atualizado.', 'ok'); await desenhar(); } catch (e) { GM.toast(e.message, 'erro'); }
+    });
+    if (fiscal) main.querySelectorAll('[data-gestor]').forEach((el) => el.remove());   // fiscal: somente leitura
+    const fdec = document.getElementById('f-dec'); if (fdec) fdec.onsubmit = (e) => { e.preventDefault(); const tx = document.getElementById('d-texto').value.trim(); if (!tx) return; GM.local.adicionar('dec', id, { texto: tx, autor: sessao.orgao.sigla }); desenhar(); };
+    const fdoc = document.getElementById('f-doc'); if (fdoc) fdoc.onsubmit = (e) => { e.preventDefault(); const n = document.getElementById('doc-nome').value.trim(); if (!n) return; GM.local.adicionar('doc', id, { nome: n, tipo: document.getElementById('doc-tipo').value, link: /^https?:\/\//i.test(document.getElementById('doc-link').value.trim()) ? document.getElementById('doc-link').value.trim() : '', autor: sessao.orgao.sigla }); desenhar(); };
+    const chat = document.getElementById('chat'); chat.scrollTop = chat.scrollHeight;
+    const fmsg = document.getElementById('f-msg'); if (fmsg) fmsg.onsubmit = async (e) => {
+      e.preventDefault();
+      const tx = document.getElementById('msg').value.trim(); if (!tx) return;
+      try { await GM.api('POST', `/api/comites/${id}/mensagens`, { texto: tx }); await desenhar(); } catch (err) { GM.toast(err.message, 'erro'); }
+    };
+    main.querySelectorAll('[data-rd]').forEach((b) => b.onclick = () => { GM.local.remover('dec', id, +b.dataset.rd); desenhar(); });
+    main.querySelectorAll('[data-rdoc]').forEach((b) => b.onclick = () => { GM.local.remover('doc', id, +b.dataset.rdoc); desenhar(); });
+  };
+  GM.ligarOcorrencias(main, async () => { await desenhar(); GM.atualizarSino(); });
+  await desenhar();
+  if (['#contrato', '#ocorrencias'].includes(location.hash)) { const el = document.getElementById(location.hash.slice(1)); el.scrollIntoView({ block: 'center' }); el.focus({ preventScroll: true }); el.classList.add('destaque'); }
+});
+</script>
+</body>
+</html>

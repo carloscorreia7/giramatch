@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova demanda — GiraMatch</title>
+  <link rel="icon" type="image/png" href="logo-giramatch.png">
+  <link rel="stylesheet" href="stylo.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="app.js"></script>
+<script>
+const editId = GM.param('id');
+GM.pagina('nova', editId ? 'Editar demanda' : 'Nova demanda', async (main, sessao) => {
+  const CATS = {
+    material: { rot: 'Material / bem', desc: 'Notebooks, papel, mobiliário, equipamentos', natureza: 'contratacao', tipo: 'material' },
+    servico: { rot: 'Serviço', desc: 'Manutenção, energia, vigilância, TI', natureza: 'contratacao', tipo: 'servico' },
+    capacitacao: { rot: 'Capacitação', desc: 'Cursos, treinamentos e eventos', natureza: 'capacitacao', tipo: 'capacitacao' },
+    outro: { rot: 'Outra necessidade', desc: 'Cessão, projeto conjunto, outras ações', natureza: 'outra', tipo: 'outro' },
+  };
+  const SUGESTOES = ['eficiência energética', 'logística reversa', 'papel reciclado', 'energia renovável', 'restrição de substâncias perigosas', 'certificação florestal'];
+  const anoAtual = new Date().getFullYear();
+  let cat = 'material';
+  let criterios = [];
+  let atual = null;
+
+  if (editId) {
+    atual = (await GM.api('GET', `/api/demandas/${editId}`)).demanda;
+    cat = atual.natureza === 'capacitacao' ? 'capacitacao' : atual.natureza === 'outra' ? 'outro' : (atual.tipo === 'servico' ? 'servico' : 'material');
+    criterios = [...(atual.criterios_sustentaveis || [])];
+  }
+  const v = (k, pad = '') => esc(atual && atual[k] != null ? atual[k] : pad);
+  const esc = GM.esc;
+
+  const F = {
+    descricao: (rot, aj) => `<div class="field full"><label class="req" for="descricao">${rot}</label><input id="descricao" name="descricao" required value="${v('descricao')}"><span class="ajuda">${aj || ''}</span></div>`,
+    codigo: (rot) => `<div class="field"><label for="codigo_catalogo">${rot}</label><input id="codigo_catalogo" name="codigo_catalogo" value="${v('codigo_catalogo')}"><span class="ajuda">Mesmo código = compatibilidade máxima de similaridade.</span></div>`,
+    categoria: (pad) => `<div class="field"><label for="categoria">Categoria</label><input id="categoria" name="categoria" value="${v('categoria', pad)}" placeholder="Ex.: TIC, Energia, Manutenção"></div>`,
+    quantidade: (rot) => `<div class="field"><label class="req" for="quantidade">${rot}</label><input id="quantidade" name="quantidade" type="number" min="0.01" step="any" required value="${v('quantidade', 1)}"></div>`,
+    unidade: (pad, fixa) => `<div class="field"><label class="req" for="unidade">Unidade de medida</label><input id="unidade" name="unidade" required value="${v('unidade', pad)}" ${fixa ? 'readonly' : ''} placeholder="un, resma, kWp, vaga…"></div>`,
+    valor: () => `<div class="field"><label for="valor_estimado">Valor estimado (R$)</label><input id="valor_estimado" name="valor_estimado" type="number" min="0" step="any" value="${v('valor_estimado')}"></div>
+      <div class="field" style="justify-content:flex-end"><label class="check"><input type="checkbox" name="valor_sigiloso" ${atual && atual.valor_sigiloso ? 'checked' : ''}> <span><strong>Orçamento sigiloso</strong><br><span class="muted small">O valor só será visível para o seu órgão (Lei 14.133, art. 24).</span></span></label></div>`,
+    fim: () => `<div class="field"><label for="fim_contrato_atual">Fim do contrato atual</label><input id="fim_contrato_atual" name="fim_contrato_atual" type="date" value="${v('fim_contrato_atual')}"><span class="ajuda">Contratos que terminam juntos ganham pontos extras no match.</span></div>`,
+    local: () => `<div class="field"><label for="municipio">Município de execução</label><input id="municipio" name="municipio" value="${v('municipio')}" placeholder="Padrão: sede do órgão (${esc(sessao.orgao.municipio)})"></div>
+      <div class="field"><label for="uf">UF</label><input id="uf" name="uf" maxlength="2" value="${v('uf')}" placeholder="${esc(sessao.orgao.uf)}" style="text-transform:uppercase"></div>`,
+    criterios: () => `<div class="field full"><span class="lbl">Critérios sustentáveis</span>
+      <div class="row"><input id="crit-in" placeholder="Digite e pressione Enter" style="flex:1;min-width:200px" aria-label="Novo critério sustentável"><button class="btn" type="button" id="crit-add">Adicionar</button></div>
+      <ul class="chips" id="crit-lista"></ul>
+      <div class="row small muted" id="crit-sug" style="margin-top:4px">Sugestões: </div></div>`,
+  };
+
+  const CAMPOS = {
+    material: () => [F.descricao('Descrição do material', 'Ex.: Notebooks corporativos'), F.codigo('Código CATMAT'), F.categoria(), F.quantidade('Quantidade'), F.unidade('un'), F.valor(), F.criterios()],
+    servico: () => [F.descricao('Descrição do serviço', 'Ex.: Manutenção preventiva e corretiva de ar-condicionado'), F.codigo('Código CATSER'), F.categoria(), F.quantidade('Quantidade'), F.unidade('un'), F.valor(), F.fim(), F.local(), F.criterios()],
+    capacitacao: () => [F.descricao('Tema da capacitação', 'Ex.: Curso de fiscalização de contratos'), F.categoria('Capacitação'), F.quantidade('Número de vagas'), F.unidade('vaga', true), F.valor(), F.local()],
+    outro: () => [F.descricao('Descrição da necessidade'), F.categoria(), F.quantidade('Quantidade'), F.unidade('un'), F.valor()],
+  };
+
+  main.innerHTML = `
+    <div class="page-head"><div><h1>${editId ? 'Editar demanda' : 'Cadastrar demanda'}</h1>
+      <p>Quanto mais completa a demanda, melhores os matches. Os campos mudam conforme a categoria.</p></div></div>
+    <div class="grid g-main">
+      <form class="card" id="form" novalidate>
+        <div class="lbl" style="margin-bottom:8px">1. Qual é a categoria?</div>
+        <div class="cat-pick" id="cats">${Object.entries(CATS).map(([k, c]) => `<button type="button" data-cat="${k}" class="${k === cat ? 'ativo' : ''}" ${editId ? 'disabled' : ''}><strong>${c.rot}</strong><span>${c.desc}</span></button>`).join('')}</div>
+        <div class="lbl" style="margin-bottom:8px">2. Quando está previsto no PCA?</div>
+        <div class="form-grid">
+          <div class="field"><label class="req" for="ano">Ano do PCA</label><input id="ano" name="ano" type="number" min="2000" max="2100" required value="${v('ano', anoAtual + 1)}"></div>
+          <div class="field"><label class="req" for="mes_previsto">Mês previsto</label>
+            <select id="mes_previsto" name="mes_previsto">${MESES.map((m, i) => `<option value="${i + 1}" ${atual && atual.mes_previsto === i + 1 ? 'selected' : ''}>${m.toUpperCase()}</option>`).join('')}</select></div>
+        </div>
+        <div class="lbl" style="margin:6px 0 8px">3. Detalhes</div>
+        <div class="form-grid" id="campos"></div>
+        <div id="msg"></div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn btn-primary" type="submit" id="salvar">${editId ? 'Salvar alterações' : 'Cadastrar e buscar matches'}</button>
+          <a class="btn" href="minhas-demandas.html">Cancelar</a></div>
+      </form>
+
+      <aside class="stack">
+        <div class="card"><h2>Como o match é calculado</h2>
+          <ul class="ul-plain small">
+            <li><strong>45%</strong> similaridade do objeto</li><li><strong>25%</strong> proximidade dos meses no PCA</li>
+            <li><strong>15%</strong> território</li><li><strong>15%</strong> critérios sustentáveis</li></ul>
+          <p class="small muted" style="margin-top:8px">Sugestões com 60% ou mais viram match. Você sempre decide se quer conectar.</p></div>
+        ${editId ? '' : `<div class="card"><h2>Importar PCA em CSV</h2>
+          <p class="small muted">Tem o PCA em planilha? Envie o CSV (separador ; ou ,). Colunas obrigatórias: <code>ano</code>, <code>descricao</code>, <code>mes_previsto</code>.</p>
+          <input type="file" id="csv" accept=".csv,text/csv" aria-label="Arquivo CSV">
+          <div id="csv-msg" class="small" style="margin-top:8px"></div></div>`}
+      </aside>
+    </div>`;
+
+  const campos = document.getElementById('campos');
+  const pintarCriterios = () => {
+    const ul = document.getElementById('crit-lista'); if (!ul) return;
+    ul.innerHTML = criterios.map((c, i) => `<li class="chip">${esc(c)}<button type="button" data-i="${i}" aria-label="Remover ${esc(c)}">×</button></li>`).join('');
+    document.getElementById('crit-sug').innerHTML = 'Sugestões: ' + SUGESTOES.filter((x) => !criterios.includes(x)).map((x) => `<span class="chip sug" data-s="${esc(x)}" role="button" tabindex="0">${esc(x)}</span>`).join(' ');
+  };
+  const pintar = () => {
+    campos.innerHTML = CAMPOS[cat]().join('');
+    document.querySelectorAll('#cats button').forEach((b) => b.classList.toggle('ativo', b.dataset.cat === cat));
+    pintarCriterios();
+    const add = () => { const i = document.getElementById('crit-in'); const t = i.value.trim(); if (t && !criterios.includes(t)) criterios.push(t); i.value = ''; pintarCriterios(); };
+    const ci = document.getElementById('crit-in');
+    if (ci) {
+      ci.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(); } };
+      document.getElementById('crit-add').onclick = add;
+    }
+  };
+  campos.addEventListener('click', (e) => {
+    const x = e.target.closest('[data-i]'); if (x) { criterios.splice(+x.dataset.i, 1); pintarCriterios(); }
+    const s = e.target.closest('[data-s]'); if (s) { criterios.push(s.dataset.s); pintarCriterios(); }
+  });
+  document.getElementById('cats').onclick = (e) => { const b = e.target.closest('[data-cat]'); if (b && !editId) { cat = b.dataset.cat; pintar(); } };
+  pintar();
+
+  document.getElementById('form').onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const msg = document.getElementById('msg');
+    const corpo = {
+      natureza: CATS[cat].natureza, tipo: CATS[cat].tipo,
+      ano: +fd.get('ano'), mes_previsto: +fd.get('mes_previsto'),
+      descricao: (fd.get('descricao') || '').trim(), codigo_catalogo: fd.get('codigo_catalogo') || null, categoria: fd.get('categoria') || null,
+      quantidade: fd.get('quantidade'), unidade: fd.get('unidade'),
+      valor_estimado: fd.get('valor_estimado') === '' ? null : fd.get('valor_estimado'), valor_sigiloso: fd.get('valor_sigiloso') === 'on',
+      fim_contrato_atual: fd.get('fim_contrato_atual') || null, municipio: fd.get('municipio') || null, uf: (fd.get('uf') || '').toUpperCase() || null,
+      criterios_sustentaveis: criterios,
+    };
+    if (!corpo.descricao) { msg.innerHTML = '<div class="alert a-bad" role="alert">Informe a descrição.</div>'; return; }
+    const btn = document.getElementById('salvar'); btn.disabled = true;
+    try {
+      const r = editId ? await GM.api('PUT', `/api/demandas/${editId}`, corpo) : await GM.api('POST', '/api/demandas', corpo);
+      const m = r.matches || {};
+      const novos = (m.criados || 0);
+      GM.toast(editId ? 'Demanda atualizada.' : 'Demanda cadastrada!', 'ok');
+      main.innerHTML = `<div class="card vazio"><div style="font-size:2.2rem">${novos ? '🎯' : '✅'}</div>
+        <h3>${editId ? 'Alterações salvas' : 'Demanda cadastrada'}</h3>
+        <p>${r.demo ? 'Modo demonstração: os matches não são recalculados.' : novos ? `O GiraMatch encontrou <strong>${novos}</strong> nova(s) sugestão(ões) de match.` : 'Ainda não há parceiros compatíveis, mas continuaremos procurando.'}</p>
+        <div class="row" style="justify-content:center"><a class="btn btn-primary" href="matches.html">Ver matches</a><a class="btn" href="minhas-demandas.html">Minhas demandas</a><a class="btn" href="nova-demanda.html">Cadastrar outra</a></div></div>`;
+    } catch (err) { msg.innerHTML = `<div class="alert a-bad" role="alert">${esc(err.message)}</div>`; btn.disabled = false; }
+  };
+
+  const csv = document.getElementById('csv');
+  if (csv) csv.onchange = async () => {
+    const out = document.getElementById('csv-msg');
+    const f = csv.files[0]; if (!f) return;
+    try {
+      const r = await GM.api('POST', '/api/demandas/importar', await f.text(), 'text/csv');
+      out.innerHTML = `<div class="alert a-ok">${r.importadas} demanda(s) importada(s). Matches novos: ${r.matches.criados}.</div>` +
+        (r.erros.length ? `<div class="alert a-warn"><div>${r.erros.map((x) => `Linha ${x.linha}: ${esc(x.erro)}`).join('<br>')}</div></div>` : '') +
+        '<p><a href="minhas-demandas.html">Ver minhas demandas →</a></p>';
+    } catch (err) { out.innerHTML = `<div class="alert a-bad">${esc(err.message)}</div>`; }
+  };
+});
+</script>
+</body>
+</html>

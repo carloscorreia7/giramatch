@@ -1,0 +1,20 @@
+%% Arquitetura efetivamente implementada (fonte editável, Mermaid). PNG: NÃO GERADO (sem ferramenta de exportação nesta sessão).
+flowchart LR
+  subgraph NAV["Navegador (HTML/CSS/JS puro)"]
+    UI["Telas: login, dashboard, demandas, matches, convites, comitê"]
+    DEMO["Modo demonstração (SIMULADO)<br/>dados fictícios em localStorage"]
+  end
+  subgraph API["API Python (http.server) — REAL"]
+    ROT["Rotas REST /api/*<br/>login por token Bearer"]
+    MATCH["Motor de match<br/>regras explicáveis, score >= 60"]
+    AUTH["auth: PBKDF2 + sessões 12 h"]
+  end
+  DB[("Banco<br/>PostgreSQL (produção, não verificado)<br/>SQLite (dev/testes, verificado)")]
+  UI -- "fetch JSON (com API)" --> ROT
+  UI -. "sem API" .-> DEMO
+  ROT --> AUTH
+  ROT --> MATCH
+  ROT --> DB
+  MATCH --> DB
+  PNCP["PNCP / SSO / IA semântica<br/>(APENAS PLANEJADO)"]:::plan
+  classDef plan stroke-dasharray: 4 4,color:#888

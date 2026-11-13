@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comitês — GiraMatch</title>
+  <link rel="icon" type="image/png" href="logo-giramatch.png">
+  <link rel="stylesheet" href="stylo.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="app.js"></script>
+<script>
+GM.pagina('comite', 'Comitês de cooperação', async (main, sessao) => {
+  const esc = GM.esc;
+  const { comites } = await GM.api('GET', '/api/comites');
+  if (!comites.length) {
+    main.innerHTML = GM.vazio('Nenhum comitê ainda', 'O comitê é criado automaticamente quando os dois órgãos conectam em um match.', '<a class="btn btn-primary" href="convites.html">Ver convites</a>');
+    return;
+  }
+  const id = +(GM.param('id') || comites[0].id);
+
+  let totalMsgs = -1;
+  const desenhar = async () => {
+    const c = (await GM.api('GET', `/api/comites/${id}`)).comite;
+    totalMsgs = c.mensagens.length;
+    const reps = GM.local.ler('rep', id);
+    const feitas = c.tarefas.filter((t) => t.concluida).length;
+    const caminho = c.match.caminho || {};
+
+    main.innerHTML = `
+      <div class="page-head"><div><h1>${esc(c.nome.replace('Comitê de cooperação — ', ''))}</h1>
+        <p>Comitê criado em ${GM.data(c.criado_em)} · gerenciador sugerido: <strong>${esc(c.gerenciador.sigla)}</strong></p></div>
+        <a class="btn btn-primary right" href="acompanhamento.html?id=${c.id}">Acompanhar iniciativa →</a></div>
+      <div class="grid g-main">
+        <div class="stack">
+          <section class="card"><h2>Órgãos participantes</h2>
+            <div class="grid g2">${c.membros.map((o) => `<div class="card" style="box-shadow:none"><strong>${esc(o.sigla)}</strong> ${o.id === c.gerenciador.id ? '<span class="badge b-pri">Gerenciador</span>' : '<span class="badge">Participante</span>'}
+              <p class="muted small" style="margin:4px 0 0">${esc(o.nome)}<br>${esc(o.municipio)}/${esc(o.uf)} · ${esc(o.esfera)}</p></div>`).join('')}</div></section>
+
+          <section class="card"><h2>Representantes do comitê</h2>
+            ${reps.length ? `<div class="tabela-wrap"><table class="resp"><thead><tr><th>Nome</th><th>Órgão</th><th>Papel</th><th>Contato</th><th></th></tr></thead><tbody>
+              ${reps.map((r, i) => `<tr><td data-label="Nome"><strong>${esc(r.nome)}</strong><br><span class="muted small">${esc(r.cargo || '')}</span></td><td data-label="Órgão">${esc(r.orgao)}</td><td data-label="Papel">${esc(r.papel)}</td><td data-label="Contato">${esc(r.email || '—')}</td>
+                <td class="acoes" data-label=""><button class="btn btn-sm btn-ghost" data-rm="${i}" aria-label="Remover ${esc(r.nome)}" type="button">Remover</button></td></tr>`).join('')}</tbody></table></div>`
+              : '<p class="muted">Nenhum representante indicado ainda.</p>'}
+            <form id="f-rep" class="form-grid" style="margin-top:14px">
+              <div class="field"><label class="req" for="r-nome">Nome</label><input id="r-nome" required></div>
+              <div class="field"><label for="r-cargo">Cargo / unidade</label><input id="r-cargo"></div>
+              <div class="field"><label class="req" for="r-orgao">Órgão</label><select id="r-orgao">${c.membros.map((o) => `<option ${o.sigla === sessao.orgao.sigla ? 'selected' : ''}>${esc(o.sigla)}</option>`).join('')}</select></div>
+              <div class="field"><label for="r-papel">Papel</label><select id="r-papel"><option>Titular</option><option>Suplente</option><option>Assessoria jurídica</option><option>Área técnica</option></select></div>
+              <div class="field full"><label for="r-email">E-mail</label><input id="r-email" type="email"></div>
+              <div class="full"><button class="btn btn-primary" type="submit">Indicar representante</button></div>
+            </form>
+            <p class="small muted" style="margin-top:8px">ℹ️ As indicações ficam salvas apenas neste navegador; o backend ainda não tem essa tabela.</p></section>
+
+          <section class="card"><h2>Conversa do comitê</h2>
+            <div class="chat" id="chat">${c.mensagens.length ? c.mensagens.map((m) => `<div class="msg ${m.orgao === sessao.orgao.sigla ? 'minha' : ''}"><div class="quem">${esc(m.autor)} · ${esc(m.orgao)} · ${GM.data(m.enviada_em)}</div>${esc(m.texto)}</div>`).join('') : '<p class="muted">Comece a conversa com a outra equipe.</p>'}</div>
+            <form class="chat-form" id="f-msg"><input id="msg" placeholder="Escreva uma mensagem…" maxlength="4000" aria-label="Mensagem"><button class="btn btn-primary" type="submit">Enviar</button></form></section>
+        </div>
+
+        <aside class="stack">
+          <div class="card"><h2>Andamento</h2>
+            <div class="progresso"><div class="bar ok"><i style="width:${Math.round(feitas / c.tarefas.length * 100)}%"></i></div><strong>${feitas}/${c.tarefas.length}</strong></div>
+            <ul class="ul-plain small" style="margin-top:10px">${c.tarefas.map((t) => `<li>${t.concluida ? '✅' : '⬜'} ${esc(t.titulo)}<br><span class="muted">${GM.data(t.prazo)}</span></li>`).join('')}</ul>
+            <a class="btn btn-sm" href="acompanhamento.html?id=${c.id}" style="margin-top:8px">Gerenciar tarefas</a></div>
+          <div class="card"><h2>Caminho jurídico</h2><p><strong>${esc(caminho.titulo)}</strong></p>
+            <ul class="small" style="padding-left:18px;margin:0">${(caminho.fundamentos || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+            <a class="small" href="match-detalhe.html?id=${c.match_id}">Ver detalhes do match →</a></div>
+          <div class="card"><h2>Seus comitês</h2><ul class="lista-com">${comites.map((x) => `<li><a href="comite.html?id=${x.id}" class="${x.id === id ? 'ativo' : ''}">${esc(x.nome.replace('Comitê de cooperação — ', ''))}<br><span class="muted small">${x.membros.map((o) => esc(o.sigla)).join(' × ')}</span></a></li>`).join('')}</ul></div>
+        </aside>
+      </div>`;
+
+    const chat = document.getElementById('chat'); chat.scrollTop = chat.scrollHeight;
+    document.getElementById('f-msg').onsubmit = async (e) => {
+      e.preventDefault();
+      const t = document.getElementById('msg').value.trim(); if (!t) return;
+      try { await GM.api('POST', `/api/comites/${id}/mensagens`, { texto: t }); await desenhar(); } catch (err) { GM.toast(err.message, 'erro'); }
+    };
+    document.getElementById('f-rep').onsubmit = (e) => {
+      e.preventDefault();
+      const nome = document.getElementById('r-nome').value.trim(); if (!nome) return;
+      GM.local.adicionar('rep', id, { nome, cargo: document.getElementById('r-cargo').value.trim(), orgao: document.getElementById('r-orgao').value, papel: document.getElementById('r-papel').value, email: document.getElementById('r-email').value.trim() });
+      GM.toast('Representante indicado.', 'ok'); desenhar();
+    };
+    main.querySelectorAll('[data-rm]').forEach((b) => { b.onclick = () => { GM.local.remover('rep', id, +b.dataset.rm); desenhar(); }; });
+  };
+  await desenhar();
+
+  // Conversa entre os órgãos: com a API, busca mensagens novas a cada 5 s (mantém o texto que está sendo digitado).
+  if (!sessao.demo) {
+    setInterval(async () => {
+      if (document.hidden) return;
+      try {
+        const novo = (await GM.api('GET', `/api/comites/${id}`)).comite.mensagens.length;
+        if (novo === totalMsgs) return;
+        const campo = document.getElementById('msg'), rascunho = campo ? campo.value : '';
+        await desenhar();
+        const novoCampo = document.getElementById('msg');
+        if (novoCampo && rascunho) { novoCampo.value = rascunho; novoCampo.focus(); }
+      } catch { /* tenta de novo no próximo ciclo */ }
+    }, 5000);
+  }
+});
+</script>
+</body>
+</html>

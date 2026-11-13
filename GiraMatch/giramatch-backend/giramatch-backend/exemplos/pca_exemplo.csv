@@ -1,0 +1,4 @@
+ano;natureza;tipo;codigo_catalogo;categoria;descricao;quantidade;unidade;valor_estimado;valor_sigiloso;mes_previsto;municipio;uf;fim_contrato_atual;criterios_sustentaveis
+2027;contratacao;material;CATMAT-DEMO-0001;TIC;Notebooks corporativos;70;un;450000;nao;3;;;;eficiência energética|logística reversa
+2027;contratacao;servico;CATSER-DEMO-0202;Manutenção;Manutenção preventiva e corretiva de ar-condicionado;150;equipamento;520000;nao;8;;;2027-08-15;gás refrigerante de baixo impacto
+2027;capacitacao;capacitacao;;Capacitação;Curso de contratações sustentáveis;30;vaga;;nao;6;;;;

@@ -1,0 +1,27 @@
+# Publicação em um clique no Render (render.com): New > Blueprint > escolha este repositório.
+# Cria a API (Python) e o banco PostgreSQL gerenciado. Nada precisa ser rodado no terminal.
+databases:
+  - name: giramatch-db
+    plan: free
+    databaseName: giramatch
+
+services:
+  - type: web
+    name: giramatch-api
+    runtime: python
+    plan: free
+    rootDir: giramatch-backend/giramatch-backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m giramatch servir
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: giramatch-db
+          property: connectionString
+      - key: GIRAMATCH_DEMO_SE_VAZIO   # troque para 0 quando for usar dados reais
+        value: "1"
+      - key: GIRAMATCH_CORS            # depois de publicar o site, coloque o endereço dele aqui
+        value: "*"
+      - key: PYTHON_VERSION
+        value: "3.12.7"

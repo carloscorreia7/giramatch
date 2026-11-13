@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel — GiraMatch</title>
+  <link rel="icon" type="image/png" href="logo-giramatch.png">
+  <link rel="stylesheet" href="stylo.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="app.js"></script>
+<script>
+GM.pagina('dashboard', 'Painel', async (main, s) => {
+  const esc = GM.esc;
+  const [painel, todos, comites, dem, inc] = await Promise.all([
+    GM.api('GET', '/api/painel'), GM.api('GET', '/api/matches'),
+    GM.api('GET', '/api/comites'), GM.api('GET', '/api/demandas'),
+    GM.api('GET', '/api/incentivos').catch(() => null), // painel segue funcionando com uma API antiga, sem incentivos
+  ]);
+  const meu = painel.meu_orgao, rede = painel.rede;
+  const matches = todos.matches, demandas = dem.demandas;
+
+  // próximas tarefas dos comitês (até 3 comitês)
+  const detalhes = await Promise.all(comites.comites.slice(0, 3).map((c) => GM.api('GET', `/api/comites/${c.id}`).then((r) => r.comite)));
+  const tarefas = detalhes.flatMap((c) => c.tarefas.filter((t) => !t.concluida).slice(0, 2).map((t) => ({ ...t, comite: c })))
+    .sort((a, b) => String(a.prazo).localeCompare(String(b.prazo))).slice(0, 5);
+
+  /* ---------- filtros (RF12): período de previsão no PCA e categoria ---------- */
+  const CATEG = { material: 'Material', servico: 'Serviço', capacitacao: 'Capacitação', outro: 'Outro' };
+  const anos = [...new Set(demandas.map((d) => d.ano))].sort();
+  const CHAVE_FILTRO = 'gm_filtro_painel', CHAVE_LIDAS = `gm_notif_${s.demo ? 'd' : 'r'}_${s.orgao.id}`;
+  let filtro = GM.armazenar.ler(CHAVE_FILTRO, { ano: '', tri: '', cat: '' });
+  if (filtro.ano && !anos.includes(+filtro.ano)) filtro.ano = '';
+  const passa = (d) => !!d && (!filtro.ano || d.ano === +filtro.ano) && (!filtro.tri || Math.ceil(d.mes_previsto / 3) === +filtro.tri) && (!filtro.cat || d.tipo === filtro.cat);
+  const filtrando = () => !!(filtro.ano || filtro.tri || filtro.cat);
+
+  const desenhar = () => {
+    const minhas = demandas.filter(passa);                              // demandas ativas (cadastradas e não excluídas)
+    const mm = matches.filter((m) => passa(m.minha_demanda));
+    const pend = mm.filter((m) => m.status === 'sugerido' && !m.minha_decisao).sort((a, b) => b.score - a.score);
+    const aguardando = mm.filter((m) => m.status === 'sugerido' && m.minha_decisao === 'conectar').length;
+    const coop = mm.filter((m) => m.status === 'conectado').length;
+    const recentes = [...minhas].sort((a, b) => String(b.criada_em || '').localeCompare(String(a.criada_em || '')) || b.id - a.id).slice(0, 5);
+
+    // notificações (RF08): convites recebidos + novos matches ainda não marcados como lidos
+    const lidas = GM.armazenar.ler(CHAVE_LIDAS, []);
+    // as notificações não dependem dos filtros: convites e novos matches sempre aparecem
+    const pendTodas = matches.filter((m) => m.status === 'sugerido' && !m.minha_decisao).sort((a, b) => b.score - a.score);
+    const notif = [
+      ...pendTodas.filter((m) => m.pedido_recebido).map((m) => ({ m, tipo: 'convite' })),
+      ...pendTodas.filter((m) => !m.pedido_recebido && !lidas.includes(m.id)).map((m) => ({ m, tipo: 'novo' })),
+    ];
+
+    main.innerHTML = `
+      <div class="page-head"><div><h1>Olá, ${esc(s.usuario.nome)}</h1>
+        <p>Veja o que o GiraMatch encontrou para o <strong>${esc(s.orgao.sigla)}</strong> hoje.</p></div>
+        <a class="btn btn-primary right" href="nova-demanda.html">+ Nova demanda</a></div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+          <strong>Filtrar por</strong>
+          <select id="f-ano" aria-label="Ano de previsão" style="max-width:150px"><option value="">Todos os anos</option>${anos.map((a) => `<option value="${a}"${+filtro.ano === a ? ' selected' : ''}>${a}</option>`).join('')}</select>
+          <select id="f-tri" aria-label="Trimestre de previsão" style="max-width:170px"><option value="">Ano todo</option>${[1, 2, 3, 4].map((t) => `<option value="${t}"${+filtro.tri === t ? ' selected' : ''}>${t}º trimestre</option>`).join('')}</select>
+          <select id="f-cat" aria-label="Categoria" style="max-width:170px"><option value="">Todas as categorias</option>${Object.entries(CATEG).map(([k, v]) => `<option value="${k}"${filtro.cat === k ? ' selected' : ''}>${v}</option>`).join('')}</select>
+          ${filtrando() ? '<button class="btn btn-sm" id="f-limpar" type="button">Limpar filtros</button>' : ''}
+        </div>
+        <p class="small muted" style="margin:8px 0 0">O período considera o mês previsto no PCA. Os filtros valem para os números, matches e demandas (as notificações aparecem sempre); "Resultado do seu órgão" e "Rede GiraMatch" mostram os totais.</p>
+      </div>
+
+      <div class="grid g4">
+        <div class="card stat"><span class="n">${minhas.length}</span><span class="l">Demandas ativas</span><a href="minhas-demandas.html">Ver demandas →</a></div>
+        <div class="card stat destaque"><span class="n">${pend.length}</span><span class="l">Matches novos para avaliar</span><a href="matches.html?aba=novo">Avaliar agora →</a></div>
+        <div class="card stat"><span class="n">${aguardando}</span><span class="l">Convites aguardando resposta</span><a href="convites.html">Acompanhar →</a></div>
+        <div class="card stat"><span class="n">${coop}</span><span class="l">Cooperações (comitês)</span><a href="comite.html">Abrir comitês →</a></div>
+      </div>
+
+      <div class="grid g-main" style="margin-top:20px">
+        <section>
+          <div class="card" style="margin-bottom:16px" aria-label="Notificações">
+            <div class="row" style="margin-bottom:8px"><h2>Notificações <span class="badge ${notif.length ? 'b-warn' : 'b-ok'}">${notif.length}</span></h2>
+              ${notif.some((n) => n.tipo === 'novo') ? '<button class="btn btn-sm right" id="n-lidas" type="button">Marcar novos matches como lidos</button>' : ''}</div>
+            ${notif.length ? `<ul class="ul-plain">${notif.slice(0, 6).map(({ m, tipo }) => `<li style="margin-bottom:8px">
+                <span class="badge ${tipo === 'convite' ? 'b-warn' : 'b-pri'}">${tipo === 'convite' ? 'Convite recebido' : 'Novo match'}</span>
+                <a href="match-detalhe.html?id=${m.id}"><strong>${esc(m.outra_demanda.orgao.sigla)}</strong> · ${esc(m.minha_demanda.descricao)}</a>
+                <span class="muted small"> · compatibilidade ${m.score}%</span></li>`).join('')}</ul>${notif.length > 6 ? `<p class="small muted">e mais ${notif.length - 6}… <a href="matches.html?aba=novo">ver todos</a></p>` : ''}`
+              : '<p class="muted small">Nenhuma notificação nova.</p>'}
+          </div>
+
+          <div class="row" style="margin-bottom:10px"><h2>Melhores oportunidades</h2><a class="right small" href="matches.html">Ver todos os matches →</a></div>
+          <div id="top">${pend.length ? pend.slice(0, 3).map((m, i) => `${i === 0 ? `<p style="margin:0 0 6px"><span class="badge b-ok">★ Maior compatibilidade: ${m.score}%</span></p>` : ''}${GM.cardMatch(m)}`).join('')
+            : GM.vazio(filtrando() ? 'Nenhum match novo neste filtro' : 'Nenhum match novo por enquanto', filtrando() ? 'Tente outro período ou categoria.' : 'Cadastre mais demandas para o GiraMatch procurar parceiros.', filtrando() ? '' : '<a class="btn btn-primary" href="nova-demanda.html">Cadastrar demanda</a>')}</div>
+          <div class="alert a-info" style="margin-top:14px"><div>${esc(todos.aviso)}</div></div>
+
+          <div class="card" style="margin-top:20px">
+            <div class="row" style="margin-bottom:8px"><h2>Demandas mais recentes</h2><a class="right small" href="minhas-demandas.html">Ver todas →</a></div>
+            ${recentes.length ? `<table><thead><tr><th>Demanda</th><th>Categoria</th><th>Previsão</th><th>Quantidade</th></tr></thead><tbody>
+              ${recentes.map((d) => `<tr><td><strong>${esc(d.descricao)}</strong></td><td>${esc(CATEG[d.tipo] || d.tipo)}</td><td>${GM.mes(d)}</td><td>${GM.qtd(d)}</td></tr>`).join('')}</tbody></table>`
+              : `<p class="muted small">${filtrando() ? 'Nenhuma demanda neste filtro.' : 'Você ainda não cadastrou demandas.'} <a href="nova-demanda.html">Cadastrar demanda</a></p>`}
+          </div>
+        </section>
+
+        <aside class="stack">
+          <div class="card"><h2>Resultado do seu órgão</h2>
+            <div class="stat"><span class="n">${GM.brl(meu.economia_estimada_conectados) || 'R$ 0'}</span><span class="l">economia estimada em matches conectados</span></div>
+            <p class="small muted" style="margin-top:10px"><strong>${meu.processos_evitados}</strong> licitação(ões) a menos para conduzir sozinho.</p>
+            <p class="small muted">${esc(painel.observacao)}</p></div>
+          <div class="card"><h2>Incentivos</h2>
+            ${inc ? `<div class="stat"><span class="n">★ ${inc.meus_pontos}</span><span class="l">pontos do seu órgão${inc.meus_pontos ? ` · ${inc.posicao}º no ranking` : ''}</span></div>
+            <table style="margin-top:10px"><tbody>
+              ${inc.ranking.slice(0, 5).map((r) => `<tr><td>${r.posicao}º ${r.meu ? `<strong>${esc(r.sigla)}</strong> (você)` : esc(r.sigla)}</td><td class="right"><strong>${r.pontos}</strong></td></tr>`).join('')}
+            </tbody></table>
+            <p class="small muted" style="margin-top:10px">Cada match conectado vale <strong>${inc.regras.base} pontos</strong> para os dois órgãos, mais ${inc.regras.por_mil_reais} ponto a cada R$ 1.000 de economia estimada (bônus de até ${inc.regras.bonus_maximo}).</p>` : '<p class="muted small">Pontuação indisponível no momento.</p>'}</div>
+          <div class="card"><h2>Rede GiraMatch</h2>
+            <table><tbody>
+              <tr><td>Órgãos cooperados</td><td class="right"><strong>${rede.orgaos_cooperados}</strong></td></tr>
+              <tr><td>Demandas na rede</td><td><strong>${rede.demandas}</strong></td></tr>
+              <tr><td>Matches conectados</td><td><strong>${rede.matches_conectados}</strong></td></tr>
+              <tr><td>Economia estimada</td><td><strong>${GM.brl(rede.economia_estimada_conectados)}</strong></td></tr>
+            </tbody></table></div>
+          <div class="card"><h2>Próximos passos</h2>
+            ${tarefas.length ? `<ul class="ul-plain">${tarefas.map((t) => `<li><a href="acompanhamento.html?id=${t.comite.id}">${esc(t.titulo)}</a><br><span class="muted small">${GM.data(t.prazo)} · ${esc(t.comite.nome.replace('Comitê de cooperação — ', ''))}</span></li>`).join('')}</ul>`
+              : '<p class="muted small">Quando você conectar com outro órgão, as tarefas do comitê aparecem aqui.</p>'}</div>
+        </aside>
+      </div>`;
+  };
+
+  desenhar();
+
+  // Os ouvintes ficam no elemento principal (que não é recriado): evita acumular ao redesenhar.
+  GM.ligarDecisoes(main, () => location.reload());
+  main.addEventListener('change', (e) => {
+    const id = e.target.id;
+    if (!['f-ano', 'f-tri', 'f-cat'].includes(id)) return;
+    filtro = { ano: main.querySelector('#f-ano').value, tri: main.querySelector('#f-tri').value, cat: main.querySelector('#f-cat').value };
+    GM.armazenar.gravar(CHAVE_FILTRO, filtro);
+    desenhar();
+  });
+  main.addEventListener('click', (e) => {
+    if (e.target.closest('#f-limpar')) { filtro = { ano: '', tri: '', cat: '' }; GM.armazenar.gravar(CHAVE_FILTRO, filtro); desenhar(); }
+    else if (e.target.closest('#n-lidas')) {
+      const lidas = new Set(GM.armazenar.ler(CHAVE_LIDAS, []));
+      matches.filter((m) => m.status === 'sugerido' && !m.minha_decisao && !m.pedido_recebido).forEach((m) => lidas.add(m.id));
+      GM.armazenar.gravar(CHAVE_LIDAS, [...lidas]);
+      desenhar();
+    }
+  });
+});
+</script>
+</body>
+</html>

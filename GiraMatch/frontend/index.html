@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrar — GiraMatch</title>
+  <link rel="icon" type="image/png" href="logo-giramatch.png">
+  <link rel="stylesheet" href="stylo.css">
+</head>
+<body>
+<div class="login">
+  <section class="login-hero">
+    <div class="logo-box grande"><img src="logo-giramatch-claro.png" alt="GiraMatch"></div>
+    <h1>Seus planejamentos, conectados aos de outros órgãos.</h1>
+    <p>O GiraMatch encontra interesses e necessidades em comum entre instituições públicas e transforma planos individuais em compras compartilhadas, capacitações conjuntas e iniciativas de cooperação.</p>
+    <ol class="passos">
+      <li><b>1</b><span><strong>Cadastre suas demandas</strong> — itens do PCA, serviços e capacitações.</span></li>
+      <li><b>2</b><span><strong>Receba matches</strong> — com percentual de compatibilidade e a explicação de cada critério.</span></li>
+      <li><b>3</b><span><strong>Conecte e coopere</strong> — comitê, cronograma e caminho jurídico sugerido.</span></li>
+    </ol>
+  </section>
+
+  <section class="login-form">
+    <form class="card" id="form" novalidate>
+      <h2 style="font-size:1.4rem">Entrar</h2>
+      <p class="muted">Identifique-se com a conta da sua instituição.</p>
+      <div id="aviso"></div>
+      <div class="field"><label for="email">E-mail institucional</label>
+        <input id="email" type="email" autocomplete="username" placeholder="gestor@orgao.gov.br" required></div>
+      <div class="field"><label for="senha">Senha</label>
+        <input id="senha" type="password" autocomplete="current-password" required></div>
+      <button class="btn btn-primary" style="width:100%" id="entrar" type="submit">Entrar</button>
+
+      <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+      <div class="lbl">Contas de demonstração <span class="muted small">(senha demo123)</span></div>
+      <div class="demo-contas" id="contas"></div>
+
+      <div id="bloco-demo" style="margin-top:18px">
+        <div class="alert a-info"><div>Protótipo com <strong>dados fictícios</strong>, guardados só neste navegador. Entre com e-mail e senha de uma das contas acima.</div></div>
+        <p class="small muted" style="margin:8px 0 0">As demandas que você cadastrar ficam salvas neste navegador. <a href="#" id="restaurar-demo">Restaurar os dados originais da demonstração</a></p>
+      </div>
+
+      <div class="status-api hidden" id="status"><i></i><span>Verificando API…</span></div>
+      <details class="small muted hidden" id="det-api" style="margin-top:8px"><summary style="cursor:pointer">Endereço da API</summary>
+        <div class="row" style="margin-top:8px"><input id="api-url" aria-label="Endereço da API"><button class="btn btn-sm" type="button" id="salvar-api">Salvar</button></div>
+      </details>
+    </form>
+  </section>
+</div>
+<div id="app" hidden></div>
+
+<script src="app.js"></script>
+<script>
+  const destino = (u) => (u && u.perfil === 'fiscal' ? 'acompanhamento.html' : 'dashboard.html');
+  if (GM.sessao()) location.replace(destino(GM.sessao().usuario));
+
+  const $ = (id) => document.getElementById(id);
+  const CONTAS = [['TRE-PB', 'trepb'], ['TRT 13', 'trt13'], ['JFPB', 'jfpb'], ['TJPB', 'tjpb'], ['TRE-RN', 'trern'], ['Fiscalização', 'fiscal']];
+  const EMAIL_FISCAL = 'fiscal@giramatch.demo';
+  $('contas').innerHTML = CONTAS.map(([s, k]) => `<button type="button" class="chip sug" data-k="${k}">${s}</button>`).join('');
+  $('contas').onclick = (e) => {
+    const b = e.target.closest('[data-k]'); if (!b) return;
+    $('email').value = b.dataset.k === 'fiscal' ? EMAIL_FISCAL : `gestor@${b.dataset.k}.giramatch.demo`; $('senha').value = 'demo123'; $('senha').focus();
+  };
+
+  $('api-url').value = GM.API;
+  $('salvar-api').onclick = () => { try { localStorage.setItem('gm_api', $('api-url').value.trim().replace(/\/$/, '')); } catch {} location.reload(); };
+
+  if (new URLSearchParams(location.search).get('expirou')) $('aviso').innerHTML = '<div class="alert a-warn" role="alert">Sua sessão expirou. Entre novamente.</div>';
+
+  // Só mostra o estado da API quando ela responde; caso contrário o site segue em modo demonstração, sem alarde.
+  (async () => {
+    if (!GM.API) return;
+    try {
+      const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 2500);
+      const j = await (await fetch(GM.API + '/api/health', { signal: ctrl.signal })).json();
+      if (j.status !== 'ok') return;
+      $('status').className = 'status-api on';
+      $('status').querySelector('span').textContent = `API conectada em ${GM.API}`;
+      $('det-api').classList.remove('hidden');
+    } catch { /* sem API: modo demonstração */ }
+  })();
+
+  const entrarDemo = (usuario) => {
+    GM.Demo.iniciar();
+    const u = usuario || { id: 1, nome: 'Gestor(a) TRE-PB', email: 'gestor@trepb.giramatch.demo', perfil: 'gestor' };
+    GM.salvarSessao({ token: 'demo', demo: true, usuario: u, orgao: u.perfil === 'fiscal' ? GM.Demo.FISCAL : GM.Demo.ORG['TRE-PB'] });
+    location.href = destino(u);
+  };
+  // Contas fictícias do protótipo (sem servidor). Não use senhas reais aqui: este código é público.
+  const CONTAS_EXTRAS = { 'teste@tjpb.giramatch.demo': { senha: 'Tjpb@2027x', nome: 'Teste' } };
+  const contaDemo = (email, senha) => {
+    if (email.toLowerCase() === EMAIL_FISCAL) return senha === 'demo123' ? { id: 99, nome: 'Fiscal das Contratações', email: EMAIL_FISCAL, perfil: 'fiscal' } : false;
+    const extra = CONTAS_EXTRAS[email.toLowerCase()];
+    if (extra) return senha === extra.senha ? { id: 1, nome: extra.nome, email: email.toLowerCase(), perfil: 'gestor' } : false;
+    return /^gestor@(trepb|trt13|jfpb|tjpb|trern)\.giramatch\.demo$/i.test(email) && senha === 'demo123';
+  };
+
+  $('form').onsubmit = async (e) => {
+    e.preventDefault();
+    const email = $('email').value.trim(), senha = $('senha').value;
+    if (!email || !senha) { $('aviso').innerHTML = '<div class="alert a-bad" role="alert">Informe e-mail e senha.</div>'; return; }
+    $('entrar').disabled = true; $('entrar').textContent = 'Entrando…';
+    if (!GM.API) {   // site sem servidor: valida só as contas fictícias
+      { const c = contaDemo(email, senha); if (c) return entrarDemo(c === true ? undefined : c); }
+      $('aviso').innerHTML = '<div class="alert a-bad" role="alert">E-mail ou senha incorretos. Use uma das contas de demonstração (senha demo123).</div>';
+      $('entrar').disabled = false; $('entrar').textContent = 'Entrar';
+      return;
+    }
+    try {
+      const r = await GM.api('POST', '/api/auth/login', { email, senha });
+      GM.salvarSessao({ token: r.token, usuario: r.usuario, orgao: r.orgao, demo: false });
+      location.href = destino(r.usuario);
+    } catch (err) {
+      { const c = err.rede && contaDemo(email, senha); if (c) return entrarDemo(c === true ? undefined : c); }   // servidor fora do ar: conta de demonstração entra no modo demonstração (simulado, etiqueta visível)
+      $('aviso').innerHTML = `<div class="alert a-bad" role="alert">${GM.esc(err.rede ? 'Servidor indisponível. Use uma conta de demonstração (senha demo123).' : err.message)}</div>`;
+      $('entrar').disabled = false; $('entrar').textContent = 'Entrar';
+    }
+  };
+
+  $('restaurar-demo').onclick = (e) => {
+    e.preventDefault();
+    if (confirm('Apagar as demandas, conexões e mensagens criadas neste navegador e voltar aos dados originais da demonstração?')) {
+      GM.Demo.reiniciar();
+      $('aviso').innerHTML = '<div class="alert a-info" role="status">Dados da demonstração restaurados.</div>';
+    }
+  };
+</script>
+</body>
+</html>

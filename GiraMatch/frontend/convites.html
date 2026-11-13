@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Convites — GiraMatch</title>
+  <link rel="icon" type="image/png" href="logo-giramatch.png">
+  <link rel="stylesheet" href="stylo.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="app.js"></script>
+<script>
+GM.pagina('convites', 'Convites', async (main) => {
+  let todos = [];
+  let aba = GM.param('aba') || 'novo';
+  const ABAS = [
+    ['novo', 'Para responder', 'Sugestões que aguardam a sua decisão. Os pedidos de conexão recebidos de outros órgãos aparecem primeiro: aceite (Conectar) ou recuse (Agora não).'],
+    ['aguardando', 'Aguardando resposta', 'Você pediu para conectar. O outro órgão é avisado e a resposta só aparece quando ele também aceitar; uma recusa não é revelada.'],
+    ['conectado', 'Aceitos (comitês)', 'Os dois órgãos conectaram e o comitê de cooperação foi criado.'],
+    ['recusado', 'Recusados', 'Sugestões dispensadas. Elas não voltam a aparecer, a menos que as demandas mudem.'],
+  ];
+  const carregar = async () => { todos = (await GM.api('GET', '/api/matches')).matches; };
+
+  const pintar = () => {
+    document.getElementById('abas').innerHTML = ABAS.map(([k, r]) => `<button type="button" data-aba="${k}" class="${aba === k ? 'ativo' : ''}" role="tab" aria-selected="${aba === k}">${r}<span class="cnt">${todos.filter((m) => GM.estadoMatch(m).chave === k).length}</span></button>`).join('');
+    const info = ABAS.find((a) => a[0] === aba);
+    const l = todos.filter((m) => GM.estadoMatch(m).chave === aba).sort((x, y) => (y.pedido_recebido - x.pedido_recebido) || (y.score - x.score));
+    document.getElementById('corpo').innerHTML = `<p class="muted">${info[2]}</p>` + (l.length ? l.map((m) => GM.cardMatch(m)).join('')
+      : GM.vazio('Nada por aqui', aba === 'novo' ? 'Você respondeu todas as sugestões. 🎉' : 'Nenhum convite nesta situação.'));
+  };
+
+  main.innerHTML = `<div class="page-head"><div><h1>Convites e manifestações de interesse</h1>
+    <p>Responda às oportunidades e acompanhe o que está em andamento com cada órgão.</p></div></div>
+    <div class="tabs" id="abas" role="tablist"></div><div id="corpo"></div>`;
+  await carregar(); pintar();
+  document.getElementById('abas').onclick = (e) => { const b = e.target.closest('[data-aba]'); if (b) { aba = b.dataset.aba; pintar(); } };
+  GM.ligarDecisoes(main, async () => { await carregar(); pintar(); });
+});
+</script>
+</body>
+</html>

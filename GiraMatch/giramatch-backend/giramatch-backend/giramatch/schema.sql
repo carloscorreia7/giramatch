@@ -1,0 +1,151 @@
+-- GiraMatch — esquema do banco de dados (SQLite)
+PRAGMA foreign_keys = ON;
+
+-- Instituições da rede de cooperação
+CREATE TABLE IF NOT EXISTS orgaos (
+    id          INTEGER PRIMARY KEY,
+    sigla       TEXT NOT NULL UNIQUE,
+    nome        TEXT NOT NULL,
+    ramo        TEXT NOT NULL,                 -- eleitoral, trabalho, federal, estadual, contas...
+    esfera      TEXT NOT NULL CHECK (esfera IN ('federal', 'estadual', 'distrital', 'municipal')),
+    uf          TEXT NOT NULL,
+    municipio   TEXT NOT NULL,
+    cooperado   INTEGER NOT NULL DEFAULT 1     -- 1 = assinou o acordo de cooperação
+);
+
+CREATE TABLE IF NOT EXISTS usuarios (
+    id          INTEGER PRIMARY KEY,
+    orgao_id    INTEGER NOT NULL REFERENCES orgaos(id),
+    nome        TEXT NOT NULL,
+    email       TEXT NOT NULL UNIQUE,
+    senha_hash  TEXT NOT NULL,
+    perfil      TEXT NOT NULL DEFAULT 'gestor'
+);
+
+CREATE TABLE IF NOT EXISTS sessoes (
+    token       TEXT PRIMARY KEY,
+    usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    criada_em   TEXT NOT NULL,
+    expira_em   TEXT NOT NULL
+);
+
+-- Demandas: itens do PCA, capacitações e outras necessidades
+CREATE TABLE IF NOT EXISTS demandas (
+    id                      INTEGER PRIMARY KEY,
+    orgao_id                INTEGER NOT NULL REFERENCES orgaos(id),
+    ano                     INTEGER NOT NULL,
+    natureza                TEXT NOT NULL DEFAULT 'contratacao'
+                            CHECK (natureza IN ('contratacao', 'capacitacao', 'outra')),
+    tipo                    TEXT NOT NULL DEFAULT 'material'
+                            CHECK (tipo IN ('material', 'servico', 'capacitacao', 'outro')),
+    codigo_catalogo         TEXT,              -- CATMAT/CATSER
+    categoria               TEXT,
+    descricao               TEXT NOT NULL,
+    quantidade              REAL NOT NULL DEFAULT 1,
+    unidade                 TEXT NOT NULL DEFAULT 'un',
+    valor_estimado          REAL,
+    valor_sigiloso          INTEGER NOT NULL DEFAULT 0,   -- orçamento sigiloso (Lei 14.133, art. 24)
+    mes_previsto            INTEGER NOT NULL CHECK (mes_previsto BETWEEN 1 AND 12),
+    municipio               TEXT,              -- local de execução (padrão: sede do órgão)
+    uf                      TEXT,
+    fim_contrato_atual      TEXT,              -- AAAA-MM-DD, quando há contrato vigente
+    criterios_sustentaveis  TEXT NOT NULL DEFAULT '[]',   -- lista JSON
+    origem                  TEXT NOT NULL DEFAULT 'manual',  -- manual, csv, pncp
+    criada_em               TEXT NOT NULL,
+    atualizada_em           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_demandas_ano ON demandas (ano, natureza);
+CREATE INDEX IF NOT EXISTS ix_demandas_orgao ON demandas (orgao_id);
+
+-- Matches sugeridos pelo motor (sempre entre duas demandas de órgãos diferentes)
+CREATE TABLE IF NOT EXISTS matches (
+    id              INTEGER PRIMARY KEY,
+    demanda_a_id    INTEGER NOT NULL REFERENCES demandas(id) ON DELETE CASCADE,
+    demanda_b_id    INTEGER NOT NULL REFERENCES demandas(id) ON DELETE CASCADE,
+    score           INTEGER NOT NULL,
+    componentes     TEXT NOT NULL,     -- JSON: notas de cada critério
+    motivos         TEXT NOT NULL,     -- JSON: lista de explicações
+    caminho         TEXT NOT NULL,     -- JSON: modelo jurídico sugerido
+    alertas         TEXT NOT NULL,     -- JSON: cuidados jurídicos/operacionais
+    volume_total    REAL,
+    economia_pct    REAL,
+    economia_valor  REAL,
+    status          TEXT NOT NULL DEFAULT 'sugerido'
+                    CHECK (status IN ('sugerido', 'conectado', 'recusado')),
+    criado_em       TEXT NOT NULL,
+    atualizado_em   TEXT NOT NULL,
+    UNIQUE (demanda_a_id, demanda_b_id),
+    CHECK (demanda_a_id < demanda_b_id)
+);
+CREATE INDEX IF NOT EXISTS ix_matches_status ON matches (status);
+
+-- Decisão de cada órgão sobre um match ("Conectar" ou "Agora não")
+CREATE TABLE IF NOT EXISTS decisoes (
+    match_id     INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    orgao_id     INTEGER NOT NULL REFERENCES orgaos(id),
+    usuario_id   INTEGER REFERENCES usuarios(id),
+    decisao      TEXT NOT NULL CHECK (decisao IN ('conectar', 'recusar')),
+    decidido_em  TEXT NOT NULL,
+    PRIMARY KEY (match_id, orgao_id)
+);
+
+-- Comitê de cooperação criado quando os dois lados conectam
+CREATE TABLE IF NOT EXISTS comites (
+    id                    INTEGER PRIMARY KEY,
+    match_id              INTEGER NOT NULL UNIQUE REFERENCES matches(id) ON DELETE CASCADE,
+    nome                  TEXT NOT NULL,
+    gerenciador_orgao_id  INTEGER REFERENCES orgaos(id),
+    criado_em             TEXT NOT NULL,
+    data_fim_contrato     TEXT              -- AAAA-MM-DD; gera alerta 60 e 30 dias antes
+);
+
+CREATE TABLE IF NOT EXISTS tarefas (
+    id                    INTEGER PRIMARY KEY,
+    comite_id             INTEGER NOT NULL REFERENCES comites(id) ON DELETE CASCADE,
+    ordem                 INTEGER NOT NULL,
+    titulo                TEXT NOT NULL,
+    responsavel_orgao_id  INTEGER REFERENCES orgaos(id),
+    prazo                 TEXT,
+    concluida             INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS mensagens (
+    id          INTEGER PRIMARY KEY,
+    comite_id   INTEGER NOT NULL REFERENCES comites(id) ON DELETE CASCADE,
+    usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
+    texto       TEXT NOT NULL,
+    enviada_em  TEXT NOT NULL
+);
+
+-- Incentivos: pontos que cada instituição ganha quando um match é conectado (um lançamento por órgão e match)
+CREATE TABLE IF NOT EXISTS pontos (
+    match_id    INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    orgao_id    INTEGER NOT NULL REFERENCES orgaos(id),
+    pontos      INTEGER NOT NULL,
+    motivo      TEXT NOT NULL,
+    criado_em   TEXT NOT NULL,
+    PRIMARY KEY (match_id, orgao_id)
+);
+
+-- Fiscalização: ocorrências que o perfil 'fiscal' registra sobre o cronograma de um comitê
+CREATE TABLE IF NOT EXISTS ocorrencias (
+    id                INTEGER PRIMARY KEY,
+    comite_id         INTEGER NOT NULL REFERENCES comites(id) ON DELETE CASCADE,
+    tarefa_id         INTEGER REFERENCES tarefas(id) ON DELETE SET NULL,
+    tipo              TEXT NOT NULL CHECK (tipo IN ('inconsistencia', 'falha', 'falta_informacao', 'intercorrencia')),
+    gravidade         TEXT NOT NULL DEFAULT 'media' CHECK (gravidade IN ('baixa', 'media', 'alta')),
+    descricao         TEXT NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'aberta' CHECK (status IN ('aberta', 'respondida', 'resolvida')),
+    autor_usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
+    criada_em         TEXT NOT NULL,
+    resolvida_em      TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_ocorrencias_comite ON ocorrencias (comite_id, status);
+
+CREATE TABLE IF NOT EXISTS ocorrencia_respostas (
+    id            INTEGER PRIMARY KEY,
+    ocorrencia_id INTEGER NOT NULL REFERENCES ocorrencias(id) ON DELETE CASCADE,
+    usuario_id    INTEGER NOT NULL REFERENCES usuarios(id),
+    texto         TEXT NOT NULL,
+    criada_em     TEXT NOT NULL
+);

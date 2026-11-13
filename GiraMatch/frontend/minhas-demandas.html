@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minhas demandas — GiraMatch</title>
+  <link rel="icon" type="image/png" href="logo-giramatch.png">
+  <link rel="stylesheet" href="stylo.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="app.js"></script>
+<script>
+GM.pagina('minhas', 'Minhas demandas', async (main) => {
+  const esc = GM.esc;
+  let demandas = [], matches = [];
+  const filtro = { busca: '', natureza: '', ano: '' };
+
+  const carregar = async () => {
+    [demandas, matches] = await Promise.all([GM.api('GET', '/api/demandas').then((r) => r.demandas), GM.api('GET', '/api/matches').then((r) => r.matches)]);
+  };
+
+  const situacao = (d) => {
+    const ms = matches.filter((m) => m.minha_demanda.id === d.id && m.status !== 'recusado');
+    if (ms.some((m) => m.status === 'conectado')) return { cls: 'b-ok', rot: 'Em comitê', ms };
+    if (ms.length) return { cls: 'b-pri', rot: `${ms.length} match${ms.length > 1 ? 'es' : ''}`, ms };
+    return { cls: '', rot: 'Sem match', ms };
+  };
+
+  const pintarLista = () => {
+    const anos = [...new Set(demandas.map((d) => d.ano))].sort();
+    const lista = demandas.filter((d) => (!filtro.busca || d.descricao.toLowerCase().includes(filtro.busca)) && (!filtro.natureza || d.natureza === filtro.natureza) && (!filtro.ano || d.ano === +filtro.ano));
+    const el = document.getElementById('lista');
+    if (!lista.length) { el.innerHTML = GM.vazio('Nenhuma demanda encontrada', 'Ajuste os filtros ou cadastre uma nova demanda.', '<a class="btn btn-primary" href="nova-demanda.html">+ Nova demanda</a>'); return; }
+    el.innerHTML = `<div class="card tabela-wrap"><table class="resp">
+      <thead><tr><th>Demanda</th><th>Categoria</th><th>Previsão</th><th>Quantidade</th><th>Valor</th><th>Situação</th><th></th></tr></thead>
+      <tbody>${lista.map((d) => { const st = situacao(d); return `
+        <tr><td data-label="Demanda"><strong>${esc(d.descricao)}</strong><br><span class="muted small">${esc(d.codigo_catalogo || 'sem código de catálogo')}</span></td>
+          <td data-label="Categoria">${NAT[d.natureza]}${d.natureza === 'contratacao' ? ' · ' + TIPO[d.tipo] : ''}</td>
+          <td class="nowrap" data-label="Previsão">${GM.mes(d)}</td><td class="nowrap" data-label="Quantidade">${GM.qtd(d)}</td><td class="nowrap" data-label="Valor">${GM.valorOuSigilo(d)}${d.valor_sigiloso && d.valor_estimado != null ? ' 🔒' : ''}</td>
+          <td data-label="Situação"><span class="badge ${st.cls}">${st.rot}</span></td>
+          <td class="nowrap acoes" data-label="">${st.ms.length ? `<button class="btn btn-sm" data-ver="${d.id}" type="button">Acompanhar</button> ` : ''}<a class="btn btn-sm" href="nova-demanda.html?id=${d.id}">Editar</a>
+            <button class="btn btn-sm btn-danger" data-del="${d.id}" type="button" aria-label="Excluir ${esc(d.descricao)}">Excluir</button></td></tr>
+        <tr class="hidden" id="det-${d.id}"><td colspan="7" class="det" style="background:var(--bg)">${st.ms.map((m) => {
+          const e = GM.estadoMatch(m);
+          return `<div class="row" style="padding:4px 0">${GM.anel(m.score)}<div><a href="match-detalhe.html?id=${m.id}"><strong>${esc(m.outra_demanda.orgao.sigla)}</strong> — ${esc(m.outra_demanda.descricao)}</a><br><span class="badge ${e.cls}">${e.rot}</span> <span class="muted small">${GM.qtd(m.outra_demanda)} · ${GM.mes(m.outra_demanda)}</span></div></div>`; }).join('')}</td></tr>`; }).join('')}
+      </tbody></table></div>`;
+    document.getElementById('f-ano').innerHTML = '<option value="">Todos os anos</option>' + anos.map((a) => `<option ${+filtro.ano === a ? 'selected' : ''}>${a}</option>`).join('');
+  };
+
+  main.innerHTML = `
+    <div class="page-head"><div><h1>Minhas demandas</h1><p>Consulte, edite e acompanhe o que seu órgão cadastrou.</p></div>
+      <a class="btn btn-primary right" href="nova-demanda.html">+ Nova demanda</a></div>
+    <div class="row" style="margin-bottom:14px">
+      <input id="f-busca" placeholder="Buscar por descrição…" style="max-width:300px" aria-label="Buscar">
+      <select id="f-nat" style="max-width:200px" aria-label="Natureza"><option value="">Todas as naturezas</option>${Object.entries(NAT).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+      <select id="f-ano" style="max-width:160px" aria-label="Ano"></select>
+    </div>
+    <div id="lista"></div>`;
+  await carregar();
+  pintarLista();
+
+  document.getElementById('f-busca').oninput = (e) => { filtro.busca = e.target.value.toLowerCase(); pintarLista(); };
+  document.getElementById('f-nat').onchange = (e) => { filtro.natureza = e.target.value; pintarLista(); };
+  document.getElementById('f-ano').onchange = (e) => { filtro.ano = e.target.value; pintarLista(); };
+  main.addEventListener('click', async (e) => {
+    const ver = e.target.closest('[data-ver]');
+    if (ver) document.getElementById('det-' + ver.dataset.ver).classList.toggle('hidden');
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      const d = demandas.find((x) => x.id === +del.dataset.del);
+      if (!(await GM.confirmar('Excluir demanda?', `“${d.descricao}” e seus matches ainda não conectados serão removidos.`, 'Excluir', true))) return;
+      try { await GM.api('DELETE', `/api/demandas/${d.id}`); GM.toast('Demanda excluída.', 'ok'); await carregar(); pintarLista(); }
+      catch (err) { GM.toast(err.message, 'erro'); }
+    }
+  });
+});
+</script>
+</body>
+</html>
